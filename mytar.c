@@ -17,9 +17,10 @@ long getFileSize(FILE *fp) {
 	return (size);
 }
 
-int isInFilesToList(char **fileList, int fileCount, const char* file) {
+int isInFilesToList(char **fileList, int fileCount, const char *file, int contains[]) {
 	for (int i = 0; i < fileCount; ++i) {
 		if (strcmp(fileList[i], file) == 0) {
+			contains[i] = 1;
 			return (1);
 		}
 	}
@@ -65,7 +66,7 @@ int main(int argc, char *argv[]) {
 				++i;
 			}
 			else {
-				errx(1, "Option -f requires an argument");
+				errx(2, "Option -f requires an argument");
 			}
 		}
 		else if (strcmp(argument, "-t") == 0) {
@@ -83,25 +84,31 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		else {
-			errx(1, "Unknown option: %s", argument);
+			errx(2, "Unknown option: %s", argument);
 		}
 	}
 
 	if (mode == -1) {
-		errx(1, "Must specify one of the following: -t");
+		errx(2, "Must specify one of the following: -t");
 	}
 
 	if (mode == 3) {
 		if (archiveFileName == NULL) {
-			errx(1, "Missing the -f option");
+			errx(2, "Missing the -f option");
 		}
 
 		if ((fp = fopen(archiveFileName, "r")) == NULL) {
-			errx(1, "Error opening archive: Failed to open '%s' ", archiveFileName);
+			errx(2, "Error opening archive: Failed to open '%s' ", archiveFileName);
 		}
 		struct Header header;
 		long fileSize = getFileSize(fp);
 		int blockCount = 0;
+		int archiveContainsFile[filesToListCount];
+		int allFilesFound = 1;
+
+		for (int i = 0; i < filesToListCount; ++i) {
+			archiveContainsFile[i] = 0;
+		}
 
 		while (fread(&header, sizeof(header), 1, fp) == 1) {
 			++blockCount;
@@ -111,6 +118,10 @@ int main(int argc, char *argv[]) {
 				}
 				warnx("A lone block at %d", blockCount - 1);
 				break;
+			}
+
+			if (header.typeflag != '0' && header.typeflag != '\0') {
+				errx(2, "Unsupported header type: %d", header.typeflag);
 			}
 
 			int size = 0;
@@ -128,16 +139,27 @@ int main(int argc, char *argv[]) {
 			if (filesToListCount == 0) {
 				printf("%s\n", header.name);
 			}
-			else if (isInFilesToList(filesToList, filesToListCount, header.name)) {
+			else if (isInFilesToList(filesToList, filesToListCount, header.name, archiveContainsFile)) {
 				printf("%s\n", header.name);
 			}
 			blockCount += sizePadded / 512;
 
 			if (ftell(fp) + sizePadded > fileSize) {
-				fprintf(stderr, "mytar: Unexpected EOF in archive\n");
-				errx(1, "Error is not recoverable: exiting now");
+				warnx("Unexpected EOF in archive");
+				errx(2, "Error is not recoverable: exiting now");
 			}
 			fseek(fp, sizePadded, SEEK_CUR);
+		}
+
+		for (int i = 0; i < filesToListCount; ++i) {
+			if (archiveContainsFile[i] == 0) {
+				allFilesFound = 0;
+				warnx("%s: Not found in archive", filesToList[i]);
+			}
+		}
+
+		if (!allFilesFound) {
+			errx(2, "Exiting with failure status due to previous errors");
 		}
 	}
 
