@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <err.h>
@@ -26,6 +27,28 @@ int isInFilesToList(char **fileList, int fileCount, const char *file, int contai
 	}
 	return (0);
 }
+
+long parseOctal(const char *oct, int arraySizeLen) {
+	long size = 0;
+	int base = 1;
+	for (int i = arraySizeLen - 2; i >= 0; --i) {
+		size += base * (oct[i] - '0');
+		base *= 8;
+	}
+	return size;
+}
+
+unsigned long long parse256(const char *number, int arraySizeLen) {
+	unsigned long long size = 0;
+	unsigned long long base = 1;
+
+	for (int i = arraySizeLen - 1; i  >= 4; --i) {
+		size += base * number[i];
+		base *= 256;
+	}
+	return size;
+}
+
 
 struct Header {
 	char name[100];
@@ -124,14 +147,15 @@ int main(int argc, char *argv[]) {
 				errx(2, "Unsupported header type: %d", header.typeflag);
 			}
 
-			int size = 0;
-			int base = 1;
-			for (int i = sizeof(header.size) - 2; i >= 0; --i) {
-				size += base * (header.size[i] - '0');
-				base *= 8;
+			long size;
+			if (header.size[0] & 0x80) {
+				size = parse256(header.size, sizeof(header.size));
+			}
+			else {
+				size = parseOctal(header.size, sizeof(header.size));
 			}
 
-			int sizePadded = size;
+			long sizePadded = size;
 			if (size % 512 > 0) {
 				sizePadded = size + 512 - (size % 512);
 			}
@@ -144,11 +168,11 @@ int main(int argc, char *argv[]) {
 			}
 			blockCount += sizePadded / 512;
 
-			if (ftell(fp) + sizePadded > fileSize) {
+			if (ftello(fp) + sizePadded > fileSize) {
 				warnx("Unexpected EOF in archive");
 				errx(2, "Error is not recoverable: exiting now");
 			}
-			fseek(fp, sizePadded, SEEK_CUR);
+			fseeko(fp, sizePadded, SEEK_CUR);
 		}
 
 		for (int i = 0; i < filesToListCount; ++i) {
