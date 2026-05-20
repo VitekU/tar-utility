@@ -80,6 +80,7 @@ int main(int argc, char *argv[]) {
 
 	const struct Header zeroHeader = {0};
 
+	int shouldLoadListItems = 0;
 	for (int i = 1; i < argc; ++i) {
 		const char *argument = argv[i];
 
@@ -94,17 +95,15 @@ int main(int argc, char *argv[]) {
 		}
 		else if (strcmp(argument, "-t") == 0) {
 			mode = 3;
-			if (i + 1 < argc) {
-				if (isAnOption(argv[i + 1])) {
-					continue;
-				}
-				++i;
-				while (i < argc) {
-					filesToList[filesToListCount] = argv[i];
-					++i;
-					++filesToListCount;
-				}
+			shouldLoadListItems = 1;
+		}
+		else if (shouldLoadListItems) {
+			if (isAnOption(argument)) {
+				shouldLoadListItems = 0;
+				continue;
 			}
+			filesToList[filesToListCount] = argv[i];
+			++filesToListCount;
 		}
 		else {
 			errx(2, "Unknown option: %s", argument);
@@ -139,7 +138,7 @@ int main(int argc, char *argv[]) {
 				if (fread(&header, sizeof(header), 1, fp) == 1 && memcmp(&header, &zeroHeader, 512) == 0) {
 					break;
 				}
-				warnx("A lone block at %d", blockCount - 1);
+				warnx("A lone block at %d", blockCount);
 				break;
 			}
 
