@@ -3,6 +3,8 @@
 #include <string.h>
 #include <err.h>
 
+const int listMode = 3;
+const int headerSize = 512;
 
 int isAnOption(const char *opt) {
 	if (*opt == '-') {
@@ -35,7 +37,7 @@ long parseOctal(const char *oct, int arraySizeLen) {
 		size += base * (oct[i] - '0');
 		base *= 8;
 	}
-	return size;
+	return (size);
 }
 
 unsigned long long parse256(const char *number, int arraySizeLen) {
@@ -46,7 +48,7 @@ unsigned long long parse256(const char *number, int arraySizeLen) {
 		size += base * number[i];
 		base *= 256;
 	}
-	return size;
+	return (size);
 }
 
 
@@ -94,7 +96,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		else if (strcmp(argument, "-t") == 0) {
-			mode = 3;
+			mode = listMode;
 			shouldLoadListItems = 1;
 		}
 		else if (shouldLoadListItems) {
@@ -114,7 +116,7 @@ int main(int argc, char *argv[]) {
 		errx(2, "Must specify one of the following: -t");
 	}
 
-	if (mode == 3) {
+	if (mode == listMode) {
 		if (archiveFileName == NULL) {
 			errx(2, "Missing the -f option");
 		}
@@ -132,10 +134,10 @@ int main(int argc, char *argv[]) {
 			archiveContainsFile[i] = 0;
 		}
 
-		while (fread(&header, sizeof(header), 1, fp) == 1) {
+		while (fread(&header, headerSize, 1, fp) == 1) {
 			++blockCount;
-			if (memcmp(&header, &zeroHeader, 512) == 0) {
-				if (fread(&header, sizeof(header), 1, fp) == 1 && memcmp(&header, &zeroHeader, 512) == 0) {
+			if (memcmp(&header, &zeroHeader, headerSize) == 0) {
+				if (fread(&header, headerSize, 1, fp) == 1 && memcmp(&header, &zeroHeader, headerSize) == 0) {
 					break;
 				}
 				warnx("A lone zero block at %d", blockCount);
@@ -155,8 +157,8 @@ int main(int argc, char *argv[]) {
 			}
 
 			long sizePadded = size;
-			if (size % 512 > 0) {
-				sizePadded = size + 512 - (size % 512);
+			if (size % headerSize > 0) {
+				sizePadded = size + headerSize - (size % headerSize);
 			}
 
 			if (filesToListCount == 0) {
@@ -165,7 +167,7 @@ int main(int argc, char *argv[]) {
 			else if (isInFilesToList(filesToList, filesToListCount, header.name, archiveContainsFile)) {
 				printf("%s\n", header.name);
 			}
-			blockCount += sizePadded / 512;
+			blockCount += sizePadded / headerSize;
 
 			if (ftell(fp) + sizePadded > fileSize) {
 				warnx("Unexpected EOF in archive");
