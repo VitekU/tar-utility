@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
 				if (fread(&header, sizeof(header), 1, fp) == 1 && memcmp(&header, &zeroHeader, 512) == 0) {
 					break;
 				}
-				warnx("A lone block at %d", blockCount);
+				warnx("A lone zero block at %d", blockCount);
 				break;
 			}
 
