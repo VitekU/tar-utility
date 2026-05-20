@@ -168,11 +168,11 @@ int main(int argc, char *argv[]) {
 			}
 			blockCount += sizePadded / 512;
 
-			if (ftello(fp) + sizePadded > fileSize) {
+			if (ftell(fp) + sizePadded > fileSize) {
 				warnx("Unexpected EOF in archive");
 				errx(2, "Error is not recoverable: exiting now");
 			}
-			fseeko(fp, sizePadded, SEEK_CUR);
+			fseek(fp, sizePadded, SEEK_CUR);
 		}
 
 		for (int i = 0; i < filesToListCount; ++i) {
