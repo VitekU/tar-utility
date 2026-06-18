@@ -168,7 +168,7 @@ void list(Args *args) {
 		}
 
 		if (!isTarHeader(&header)) {
-			warnx("This does no look like a tar archive");
+			warnx("This does not look like a tar archive");
 			errx(2, "Exiting with failure status due to previous errors");
 		}
 
