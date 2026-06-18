@@ -88,6 +88,17 @@ typedef struct {
 
 } Args;
 
+int isTarFile(FILE *fp) {
+	Header header;
+	int readResult = fread(&header, HEADER_SIZE, 1, fp);
+	fseek(fp, 0, SEEK_SET);
+	if (readResult != 1 || strncmp(header.magic, MAGIC, MAGIC_LENGTH)) {
+		return (0);
+	}
+	return (1);
+
+}
+
 void loadOptions(int argc, char **argv, Args *args) {
 	args->filesToListCount = 0;
 	args->filesToList = malloc(argc * sizeof(char *));
@@ -144,12 +155,11 @@ void list(Args *args) {
 	Header header;
 	long fileSize = getFileSize(fp);
 	int blockCount = 0;
-	int archiveContainsFile[args->filesToListCount];
-	int allFilesFound = 1;
-
-	for (int i = 0; i < args->filesToListCount; ++i) {
-		archiveContainsFile[i] = 0;
+	int *archiveContainsFile = NULL;
+	if (args->filesToListCount > 0) {
+		archiveContainsFile = calloc(args->filesToListCount, sizeof(int));
 	}
+	int allFilesFound = 1;
 
 	while (fread(&header, HEADER_SIZE, 1, fp) == 1) {
 		++blockCount;
@@ -208,6 +218,7 @@ void list(Args *args) {
 
 void extract(Args *args) {
 	FILE *fp = NULL;
+
 	const Header zeroHeader = {0};
 
 	if (args->fileName == NULL) {
@@ -218,10 +229,18 @@ void extract(Args *args) {
 		errx(2, "Error opening archive: Failed to open '%s' ", args->fileName);
 	}
 
+	if (!isTarFile(fp)) {
+		warnx("This does no look like a tar archive");
+		errx(2, "Exiting with failure status due to previous errors");
+	}
+
 	Header header;
 	long fileSize = getFileSize(fp);
 	int blockCount = 0;
-	int archiveContainsFile[args->filesToListCount];
+	int *archiveContainsFile = NULL;
+	if (args->filesToListCount > 0) {
+		archiveContainsFile = calloc(args->filesToListCount, sizeof(int));
+	}
 	int allFilesFound = 1;
 
 	for (int i = 0; i < args->filesToListCount; ++i) {
@@ -236,11 +255,6 @@ void extract(Args *args) {
 			}
 			warnx("A lone zero block at %d", blockCount);
 			break;
-		}
-
-		if (strncmp(header.magic, MAGIC, MAGIC_LENGTH) != 0) {
-			warnx("This does not loook like a tar archive");
-			errx(2, "Exiting with failure status due to previous erros");
 		}
 
 		if (header.typeflag != '0' && header.typeflag != '\0') {
