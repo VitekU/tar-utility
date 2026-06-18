@@ -273,7 +273,7 @@ void extract(Args *args) {
 			}
 			FILE *fpNew = fopen(header.name, "w");
 			char c;
-			for (int i = 0; i < size; ++i) {
+			for (long i = 0; i < size; ++i) {
 				if (fread(&c, sizeof(c), 1, fp) != 1) {
 					warnx("Unexpected EOF in archive");
 					errx(2, "Error is not recoverable: exiting now");
