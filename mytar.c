@@ -19,6 +19,13 @@ int isAnOption(const char *opt) {
 	return (0);
 }
 
+long getFileSize(FILE *fp) {
+	fseek(fp, 0, SEEK_END);
+	long size = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	return (size);
+}
+
 // returns whether the array contains the string and marks the string as present in the "contains[]" array
 int isInFilesToList(char **fileList, int fileCount, const char *file, int contains[]) {
 	for (int i = 0; i < fileCount; ++i) {
@@ -135,6 +142,7 @@ void list(Args *args) {
 	}
 
 	Header header;
+	long fileSize = getFileSize(fp);
 	int blockCount = 0;
 	int archiveContainsFile[args->filesToListCount];
 	int allFilesFound = 1;
@@ -178,10 +186,11 @@ void list(Args *args) {
 		}
 		blockCount += sizePadded / HEADER_SIZE;
 
-		if (fseek(fp, sizePadded, SEEK_CUR) == -1) {
+		if (ftell(fp) + sizePadded > fileSize) {
 			warnx("Unexpected EOF in archive");
 			errx(2, "Error is not recoverable: exiting now");
-		};
+		}
+		fseek(fp, sizePadded, SEEK_CUR);
 	}
 
 	for (int i = 0; i < args->filesToListCount; ++i) {
@@ -210,6 +219,7 @@ void extract(Args *args) {
 	}
 
 	Header header;
+	long fileSize = getFileSize(fp);
 	int blockCount = 0;
 	int archiveContainsFile[args->filesToListCount];
 	int allFilesFound = 1;
@@ -251,10 +261,11 @@ void extract(Args *args) {
 		}
 
 		if (args->filesToListCount > 0 && !isInFilesToList(args->filesToList, args->filesToListCount, header.name, archiveContainsFile)) {
-			if (fseek(fp, sizePadded, SEEK_CUR) == -1) {
+			if (ftell(fp) + sizePadded > fileSize) {
 				warnx("Unexpected EOF in archive");
 				errx(2, "Error is not recoverable: exiting now");
-			};
+			}
+			fseek(fp, sizePadded, SEEK_CUR);
 		}
 		else {
 			if (args->verbose) {
@@ -263,20 +274,21 @@ void extract(Args *args) {
 			FILE *fpNew = fopen(header.name, "w");
 			char c;
 			for (int i = 0; i < size; ++i) {
-				if (fread(&c, sizeof(c), 1, fp) == 0) {
+				if (fread(&c, sizeof(c), 1, fp) != 1) {
 					warnx("Unexpected EOF in archive");
 					errx(2, "Error is not recoverable: exiting now");
 				}
-				if (fwrite(&c, 1, sizeof(c), fpNew) == 0) {
+				if (fwrite(&c, 1, sizeof(c), fpNew) != 1) {
 					errx(2, "Error writing to file");
 				}
 			}
 			fclose(fpNew);
 
-			if (fseek(fp, sizePadded - size, SEEK_CUR) == -1) {
+			if (ftell(fp) + sizePadded - size > fileSize) {
 				warnx("Unexpected EOF in archive");
 				errx(2, "Error is not recoverable: exiting now");
-			};
+			}
+			fseek(fp, sizePadded - size, SEEK_CUR);
 
 		}
 		blockCount += sizePadded / HEADER_SIZE;
