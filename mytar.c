@@ -88,15 +88,11 @@ typedef struct {
 
 } Args;
 
-int isTarFile(FILE *fp) {
-	Header header;
-	int readResult = fread(&header, HEADER_SIZE, 1, fp);
-	fseek(fp, 0, SEEK_SET);
-	if (readResult != 1 || strncmp(header.magic, MAGIC, MAGIC_LENGTH)) {
-		return (0);
+int isTarHeader(Header *header) {
+	if (strncmp(header->magic, MAGIC, MAGIC_LENGTH) == 0) {
+		return (1);
 	}
-	return (1);
-
+	return (0);
 }
 
 void loadOptions(int argc, char **argv, Args *args) {
@@ -171,6 +167,11 @@ void list(Args *args) {
 			break;
 		}
 
+		if (!isTarHeader(&header)) {
+			warnx("This does no look like a tar archive");
+			errx(2, "Exiting with failure status due to previous errors");
+		}
+
 		if (header.typeflag != '0' && header.typeflag != '\0') {
 			errx(2, "Unsupported header type: %d", header.typeflag);
 		}
@@ -229,11 +230,6 @@ void extract(Args *args) {
 		errx(2, "Error opening archive: Failed to open '%s' ", args->fileName);
 	}
 
-	if (!isTarFile(fp)) {
-		warnx("This does no look like a tar archive");
-		errx(2, "Exiting with failure status due to previous errors");
-	}
-
 	Header header;
 	long fileSize = getFileSize(fp);
 	int blockCount = 0;
@@ -255,6 +251,11 @@ void extract(Args *args) {
 			}
 			warnx("A lone zero block at %d", blockCount);
 			break;
+		}
+
+		if (!isTarHeader(&header)) {
+			warnx("This does no look like a tar archive");
+			errx(2, "Exiting with failure status due to previous errors");
 		}
 
 		if (header.typeflag != '0' && header.typeflag != '\0') {
