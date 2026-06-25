@@ -8,57 +8,33 @@
 #define EXTRACT_MODE 'x'
 #define VERBOSE 'v'
 
+#define FILE_OP "-f"
+#define LIST_OP "-t"
+#define EXTRACT_OP "-x"
+#define VERBOSE_OP "-v"
+
 #define HEADER_SIZE 512
-#define MAGIC "ustar"
+#define CORRECT_MAGIC "ustar"
 #define MAGIC_LENGTH 5
-
-int isAnOption(const char *opt) {
-	if (*opt == '-') {
-		return (1);
-	}
-	return (0);
-}
-
-long getFileSize(FILE *fp) {
-	fseek(fp, 0, SEEK_END);
-	long size = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-	return (size);
-}
-
-// returns whether the array contains the string and marks the string as present in the "contains[]" array
-int isInFilesToList(char **fileList, int fileCount, const char *file, int contains[]) {
-	for (int i = 0; i < fileCount; ++i) {
-		if (strcmp(fileList[i], file) == 0) {
-			contains[i] = 1;
-			return (1);
-		}
-	}
-	return (0);
-}
-
-long parseOctal(const char *oct, int arraySizeLen) {
-	long size = 0;
-	int base = 1;
-	for (int i = arraySizeLen - 2; i >= 0; --i) {
-		size += base * (oct[i] - '0');
-		base *= 8;
-	}
-	return (size);
-}
-
-unsigned long long parse256(const char *number, int arraySizeLen) {
-	unsigned long long size = 0;
-	unsigned long long base = 1;
-
-	for (int i = arraySizeLen - 1; i  >= 4; --i) {
-		size += base * number[i];
-		base *= 256;
-	}
-	return (size);
-}
+#define CORRECT_TYPEFLAG '0'
+#define MSB_MASK 0x80 // mask to determine the value of the most significant bit of an 8 bit number
 
 
+/*
+ * the Args struct that is being passed to the functions that process the individual modes
+ */
+typedef struct {
+	char mode;
+	char *fileName;
+	char **filesToProcess;
+	int filesToProcessCount;
+	char verbose;
+
+} Args;
+
+/*
+ * the tar header struct according to the specification
+ */
 typedef struct {
 	char name[100];
 	char mode[8];
@@ -79,25 +55,126 @@ typedef struct {
 	char padding[12];
 } Header;
 
-typedef struct {
-	char mode;
-	char *fileName;
-	char **filesToList;
-	int filesToListCount;
-	char verbose;
 
-} Args;
-
-int isTarHeader(Header *header) {
-	if (strncmp(header->magic, MAGIC, MAGIC_LENGTH) == 0) {
+int isAnOption(const char *op) {
+	if (*op == '-') {
 		return (1);
 	}
 	return (0);
 }
 
+long getFileSize(FILE *fp) {
+	fseek(fp, 0, SEEK_END);
+	long size = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	return (size);
+}
+
+/*
+ * checks if the *file string is in the **fileList array
+ * if present it marks the string as present in the *contains array
+ */
+int isInfilesToProcess(char **fileList, int fileCount, const char *file, int *contains) {
+	for (int i = 0; i < fileCount; ++i) {
+		if (strcmp(fileList[i], file) == 0) {
+			contains[i] = 1;
+			return (1);
+		}
+	}
+	return (0);
+}
+
+/*
+ * returns the decimal value of the file size in octal encoding
+ */
+long parseOctal(const char *oct, int arraySizeLen) {
+	long size = 0;
+	int base = 1;
+	for (int i = arraySizeLen - 2; i >= 0; --i) {
+		size += base * (oct[i] - '0');
+		base *= 8;
+	}
+	return (size);
+}
+
+/*
+ * returns the decimal value of the file size in base 256 encoding
+ */
+unsigned long long parse256(const char *number, int arraySizeLen) {
+	unsigned long long size = 0;
+	unsigned long long base = 1;
+
+	for (int i = arraySizeLen - 1; i  >= 4; --i) {
+		size += base * number[i];
+		base *= 256;
+	}
+	return (size);
+}
+
+int isTarHeader(Header *header) {
+	if (strncmp(header->magic, CORRECT_MAGIC, MAGIC_LENGTH) == 0) {
+		return (1);
+	}
+	return (0);
+}
+
+
+/*
+ * takes a header and returns the file size in decimal
+ */
+long getSizeDecimal(Header *header) {
+	if (header->size[0] & MSB_MASK) {
+		return(parse256(header->size, sizeof(header->size)));
+	}
+	else {
+		return(parseOctal(header->size, sizeof(header->size)));
+	}
+}
+
+/*
+ * returns the padded size
+ */
+long getSizePadded(long size) {
+	if (size % HEADER_SIZE > 0) {
+		return(size + HEADER_SIZE - (size % HEADER_SIZE));
+	}
+	return size;
+}
+
+/*
+ * creates and validates the file pointer *fp
+ */
+FILE* createFilePtr(Args *args) {
+	FILE *fp = NULL;
+	if (args->fileName == NULL) {
+		errx(2, "Missing the -f option");
+	}
+
+	if ((fp = fopen(args->fileName, "r")) == NULL) {
+		errx(2, "Error opening archive: Failed to open '%s' ", args->fileName);
+	}
+	return fp;
+}
+
+/*
+ * validates the typeflag and magic of the header
+ */
+void validateHeader(Header *header) {
+	if (strncmp(header->magic, CORRECT_MAGIC, MAGIC_LENGTH) != 0) {
+		warnx("This does not look like a tar archive");
+		errx(2, "Exiting with failure status due to previous errors");
+	}
+	if (header->typeflag != CORRECT_TYPEFLAG && header->typeflag != '\0') {
+		errx(2, "Unsupported header type: %d", header->typeflag);
+	}
+}
+
+/*
+ * parses the **argv arguments into the *args struct
+ */
 void loadOptions(int argc, char **argv, Args *args) {
-	args->filesToListCount = 0;
-	args->filesToList = malloc(argc * sizeof(char *));
+	args->filesToProcessCount = 0;
+	args->filesToProcess = malloc(argc * sizeof(char *));
 	int shouldLoadListItems = 0;
 	for (int i = 1; i < argc; ++i) {
 		const char *argument = argv[i];
@@ -111,15 +188,15 @@ void loadOptions(int argc, char **argv, Args *args) {
 				errx(2, "Option -f requires an argument");
 			}
 		}
-		else if (strcmp(argument, "-t") == 0) {
+		else if (strcmp(argument, LIST_OP) == 0) {
 			args->mode = LIST_MODE;
 			shouldLoadListItems = 1;
 		}
-		else if (strcmp(argument, "-x") == 0) {
+		else if (strcmp(argument, EXTRACT_OP) == 0) {
 			args->mode = EXTRACT_MODE;
 			shouldLoadListItems = 1;
 		}
-		else if (strcmp(argument, "-v") == 0) {
+		else if (strcmp(argument, VERBOSE_OP) == 0) {
 			args->verbose = VERBOSE;
 		}
 		else if (shouldLoadListItems) {
@@ -127,8 +204,8 @@ void loadOptions(int argc, char **argv, Args *args) {
 				shouldLoadListItems = 0;
 				continue;
 			}
-			args->filesToList[args->filesToListCount] = argv[i];
-			++args->filesToListCount;
+			args->filesToProcess[args->filesToProcessCount] = argv[i];
+			++args->filesToProcessCount;
 		}
 		else {
 			errx(2, "Unknown option: %s", argument);
@@ -136,25 +213,23 @@ void loadOptions(int argc, char **argv, Args *args) {
 	}
 }
 
-void list(Args *args) {
-	FILE *fp = NULL;
+/*
+ * handles the LIST_MODE mode
+ */
+void list(Args *args, FILE *fp) {
 	const Header zeroHeader = {0};
-
-	if (args->fileName == NULL) {
-		errx(2, "Missing the -f option");
-	}
-
-	if ((fp = fopen(args->fileName, "r")) == NULL) {
-		errx(2, "Error opening archive: Failed to open '%s' ", args->fileName);
-	}
-
 	Header header;
 	long fileSize = getFileSize(fp);
 	int blockCount = 0;
 	int *archiveContainsFile = NULL;
-	if (args->filesToListCount > 0) {
-		archiveContainsFile = calloc(args->filesToListCount, sizeof(int));
+	if (args->filesToProcessCount > 0) {
+		archiveContainsFile = calloc(args->filesToProcessCount, sizeof(int));
 	}
+
+	/*
+	 * when specifying the files to be listed, we need to ensure that the archive does in fact contain them
+	 * by default we assume so and thus the value is set to true
+	 */
 	int allFilesFound = 1;
 
 	while (fread(&header, HEADER_SIZE, 1, fp) == 1) {
@@ -167,32 +242,15 @@ void list(Args *args) {
 			break;
 		}
 
-		if (!isTarHeader(&header)) {
-			warnx("This does not look like a tar archive");
-			errx(2, "Exiting with failure status due to previous errors");
-		}
+		validateHeader(&header);
 
-		if (header.typeflag != '0' && header.typeflag != '\0') {
-			errx(2, "Unsupported header type: %d", header.typeflag);
-		}
+		long size = getSizeDecimal(&header);
+		long sizePadded = getSizePadded(size);
 
-		long size;
-		if (header.size[0] & 0x80) {
-			size = parse256(header.size, sizeof(header.size));
-		}
-		else {
-			size = parseOctal(header.size, sizeof(header.size));
-		}
-
-		long sizePadded = size;
-		if (size % HEADER_SIZE > 0) {
-			sizePadded = size + HEADER_SIZE - (size % HEADER_SIZE);
-		}
-
-		if (args->filesToListCount == 0) {
+		if (args->filesToProcessCount == 0) {
 			printf("%s\n", header.name);
 		}
-		else if (isInFilesToList(args->filesToList, args->filesToListCount, header.name, archiveContainsFile)) {
+		else if (isInfilesToProcess(args->filesToProcess, args->filesToProcessCount, header.name, archiveContainsFile)) {
 			printf("%s\n", header.name);
 		}
 		blockCount += sizePadded / HEADER_SIZE;
@@ -204,42 +262,39 @@ void list(Args *args) {
 		fseek(fp, sizePadded, SEEK_CUR);
 	}
 
-	for (int i = 0; i < args->filesToListCount; ++i) {
+	for (int i = 0; i < args->filesToProcessCount; ++i) {
 		if (archiveContainsFile[i] == 0) {
 			allFilesFound = 0;
-			warnx("%s: Not found in archive", args->filesToList[i]);
+			warnx("%s: Not found in archive", args->filesToProcess[i]);
 		}
 	}
 
 	if (!allFilesFound) {
 		errx(2, "Exiting with failure status due to previous errors");
 	}
-	fclose(fp);
 }
 
-void extract(Args *args) {
-	FILE *fp = NULL;
-
+/*
+ * handles the EXTRACT_MODE mode
+ */
+void extract(Args *args, FILE *fp) {
 	const Header zeroHeader = {0};
-
-	if (args->fileName == NULL) {
-		errx(2, "Missing the -f option");
-	}
-
-	if ((fp = fopen(args->fileName, "r")) == NULL) {
-		errx(2, "Error opening archive: Failed to open '%s' ", args->fileName);
-	}
-
 	Header header;
 	long fileSize = getFileSize(fp);
 	int blockCount = 0;
 	int *archiveContainsFile = NULL;
-	if (args->filesToListCount > 0) {
-		archiveContainsFile = calloc(args->filesToListCount, sizeof(int));
+	if (args->filesToProcessCount > 0) {
+		archiveContainsFile = calloc(args->filesToProcessCount, sizeof(int));
 	}
+
+	/*
+	 * when specifying the files to be extracted, we need to ensure that the archive does in fact contain them
+	 * by default we assume so and thus the value is set to true
+	 */
+
 	int allFilesFound = 1;
 
-	for (int i = 0; i < args->filesToListCount; ++i) {
+	for (int i = 0; i < args->filesToProcessCount; ++i) {
 		archiveContainsFile[i] = 0;
 	}
 
@@ -253,29 +308,12 @@ void extract(Args *args) {
 			break;
 		}
 
-		if (!isTarHeader(&header)) {
-			warnx("This does no look like a tar archive");
-			errx(2, "Exiting with failure status due to previous errors");
-		}
+		validateHeader(&header);
 
-		if (header.typeflag != '0' && header.typeflag != '\0') {
-			errx(2, "Unsupported header type: %d", header.typeflag);
-		}
+		long size = getSizeDecimal(&header);
+		long sizePadded = getSizePadded(size);
 
-		long size;
-		if (header.size[0] & 0x80) {
-			size = parse256(header.size, sizeof(header.size));
-		}
-		else {
-			size = parseOctal(header.size, sizeof(header.size));
-		}
-
-		long sizePadded = size;
-		if (size % HEADER_SIZE > 0) {
-			sizePadded = size + HEADER_SIZE - (size % HEADER_SIZE);
-		}
-
-		if (args->filesToListCount > 0 && !isInFilesToList(args->filesToList, args->filesToListCount, header.name, archiveContainsFile)) {
+		if (args->filesToProcessCount > 0 && !isInfilesToProcess(args->filesToProcess, args->filesToProcessCount, header.name, archiveContainsFile)) {
 			if (ftell(fp) + sizePadded > fileSize) {
 				warnx("Unexpected EOF in archive");
 				errx(2, "Error is not recoverable: exiting now");
@@ -309,33 +347,34 @@ void extract(Args *args) {
 		blockCount += sizePadded / HEADER_SIZE;
 	}
 
-	for (int i = 0; i < args->filesToListCount; ++i) {
+	for (int i = 0; i < args->filesToProcessCount; ++i) {
 		if (archiveContainsFile[i] == 0) {
 			allFilesFound = 0;
-			warnx("%s: Not found in archive", args->filesToList[i]);
+			warnx("%s: Not found in archive", args->filesToProcess[i]);
 		}
 	}
 
 	if (!allFilesFound) {
 		errx(2, "Exiting with failure status due to previous errors");
 	}
-	fclose(fp);
 }
 
 int main(int argc, char *argv[]) {
-	Args *args = malloc(sizeof(Args));
+	Args *args = calloc(1, sizeof(Args));
 	loadOptions(argc, argv, args);
+	FILE *fp = createFilePtr(args);
 
 	if (args->mode == LIST_MODE) {
-		list(args);
+		list(args, fp);
 	}
 	else if (args->mode == EXTRACT_MODE) {
-		extract(args);
+		extract(args, fp);
 	}
 	else {
 		errx(2, "Must specify one of the following: -t, -x");
 	}
 
+	fclose(fp);
 	free(args);
 	return (0);
 }
