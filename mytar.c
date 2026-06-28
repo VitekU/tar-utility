@@ -18,6 +18,7 @@
 #define MAGIC_LENGTH 5
 #define CORRECT_TYPEFLAG '0'
 #define MSB_MASK 0x80 // mask to determine the value of the most significant bit of an 8 bit number
+#define CHUNK_SIZE 4096 // size of the chunk that is being read in an extract mode
 
 
 /*
@@ -166,6 +167,22 @@ void validateHeader(Header *header) {
 	}
 	if (header->typeflag != CORRECT_TYPEFLAG && header->typeflag != '\0') {
 		errx(2, "Unsupported header type: %d", header->typeflag);
+	}
+}
+
+/*
+ * one by one reads and writes n characters from a file to another file
+ */
+void readAndWriteRange(int n, FILE *fp, FILE *fpNew) {
+	char c;
+	for (int i = 0; i < n; ++i) {
+		if (fread(&c, sizeof(c), 1, fp) != 1) {
+			warnx("Unexpected EOF in archive");
+			errx(2, "Error is not recoverable: exiting now");
+		}
+		if (fwrite(&c, 1, sizeof(c), fpNew) != 1) {
+			errx(2, "Error writing to file");
+		}
 	}
 }
 
@@ -325,16 +342,26 @@ void extract(Args *args, FILE *fp) {
 				printf("%s\n", header.name);
 			}
 			FILE *fpNew = fopen(header.name, "w");
+
+			int chunksToRead = size / CHUNK_SIZE;
+			int remainderToRead = size % CHUNK_SIZE;
+
+			char chunk[CHUNK_SIZE];
 			char c;
-			for (long i = 0; i < size; ++i) {
-				if (fread(&c, sizeof(c), 1, fp) != 1) {
+
+			for (int i = 0; i < chunksToRead; ++i) {
+				if (ftell(fp) + CHUNK_SIZE > fileSize) {
+					readAndWriteRange(fileSize - ftell(fp), fp, fpNew);
 					warnx("Unexpected EOF in archive");
 					errx(2, "Error is not recoverable: exiting now");
 				}
+				fread(&chunk, sizeof(chunk), 1, fp);
 				if (fwrite(&c, 1, sizeof(c), fpNew) != 1) {
 					errx(2, "Error writing to file");
 				}
 			}
+
+			readAndWriteRange(remainderToRead, fp, fpNew);
 			fclose(fpNew);
 
 			if (ftell(fp) + sizePadded - size > fileSize) {
