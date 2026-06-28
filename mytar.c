@@ -356,7 +356,7 @@ void extract(Args *args, FILE *fp) {
 					errx(2, "Error is not recoverable: exiting now");
 				}
 				fread(&chunk, sizeof(chunk), 1, fp);
-				if (fwrite(&c, sizeof(c), 1, fpNew) != 1) {
+				if (fwrite(&chunk, sizeof(c), 1, fpNew) != 1) {
 					errx(2, "Error writing to file");
 				}
 			}
