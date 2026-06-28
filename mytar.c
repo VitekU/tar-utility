@@ -18,7 +18,7 @@
 #define MAGIC_LENGTH 5
 #define CORRECT_TYPEFLAG '0'
 #define MSB_MASK 0x80 // mask to determine the value of the most significant bit of an 8 bit number
-#define CHUNK_SIZE 8192 // size of the chunk that is being read in an extract mode
+#define CHUNK_SIZE 4096 // size of the chunk that is being read in an extract mode
 
 
 /*
