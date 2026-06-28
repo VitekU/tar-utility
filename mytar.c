@@ -347,7 +347,6 @@ void extract(Args *args, FILE *fp) {
 			int remainderToRead = size % CHUNK_SIZE;
 
 			char chunk[CHUNK_SIZE];
-			char c;
 
 			for (int i = 0; i < chunksToRead; ++i) {
 				if (ftell(fp) + CHUNK_SIZE > fileSize) {
