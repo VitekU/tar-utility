@@ -180,7 +180,7 @@ void readAndWriteRange(int n, FILE *fp, FILE *fpNew) {
 			warnx("Unexpected EOF in archive");
 			errx(2, "Error is not recoverable: exiting now");
 		}
-		if (fwrite(&c, 1, sizeof(c), fpNew) != 1) {
+		if (fwrite(&c, sizeof(c), 1, fpNew) != 1) {
 			errx(2, "Error writing to file");
 		}
 	}
@@ -356,7 +356,7 @@ void extract(Args *args, FILE *fp) {
 					errx(2, "Error is not recoverable: exiting now");
 				}
 				fread(&chunk, sizeof(chunk), 1, fp);
-				if (fwrite(&c, 1, sizeof(c), fpNew) != 1) {
+				if (fwrite(&c, sizeof(c), 1, fpNew) != 1) {
 					errx(2, "Error writing to file");
 				}
 			}
